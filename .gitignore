@@ -1,0 +1,25 @@
+# Gradle / build output
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Local machine settings (contains your SDK path)
+local.properties
+
+# Built apps (GitHub Actions will produce these for you instead)
+*.apk
+*.aab
+
+# Signing keys. Never upload these
+*.jks
+*.keystore
+keystore.properties
+
+# OS junk
+.DS_Store
