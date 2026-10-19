@@ -5,7 +5,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 
 /**
- * A named window in the day, e.g. "Deep work" 09:00-11:00.
+ * A window in the day, e.g. 09:00-11:00. A block is named after the list it shows.
  *
  * If [end] is earlier than [start] the block crosses midnight (e.g. 22:00-02:00).
  * [days] are the days the block STARTS on.
@@ -44,12 +44,18 @@ data class TodoList(
     val position: Int = 0,
 )
 
+/**
+ * A task. When [parentId] is set the task is a subtask of another task.
+ * A subtask has its own [deadline]; without one it inherits the deadline of its parent.
+ */
 data class Task(
     val id: Long,
     val listId: Long,
     val title: String,
     val deadline: LocalDateTime? = null,
-    /** Manual order inside the list; lower comes first. */
+    /** Manual order inside the list (or inside the parent); lower comes first. */
     val position: Int = 0,
     val done: Boolean = false,
+    val parentId: Long? = null,
+    val completedAt: LocalDateTime? = null,
 )

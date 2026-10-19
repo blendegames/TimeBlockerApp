@@ -1,17 +1,20 @@
 plugins {
-    kotlin("jvm") version "2.0.21"
-}
-
-repositories {
-    mavenCentral()
+    id("org.jetbrains.kotlin.jvm")
 }
 
 dependencies {
     testImplementation(kotlin("test"))
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
 kotlin {
-    jvmToolchain(17)
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 tasks.test {

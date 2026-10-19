@@ -20,15 +20,20 @@ data class CurrentTask(
     /** The list's block, or null for "anytime" lists. */
     val block: TimeBlock?,
     val reason: Reason,
+    /** The deadline that counts: the task's own, or its parent's. */
+    val deadline: LocalDateTime? = task.deadline,
 )
 
 /**
- * Decides the ONE task to show right now.
+ * Decides the ONE task to show right now (and the order of the ones after it).
  *
  * Priority:
  *  1. Most overdue task, from any list or block (worst offender first).
  *  2. Within the active time block(s): soonest deadline first, then manual order.
  *  3. Fallback: same ordering across "anytime" lists.
+ *
+ * Only tasks you can actually do are candidates: a task that still has open subtasks
+ * is replaced by those subtasks.
  *
  * Returns null when there is nothing to do right now.
  */
@@ -40,43 +45,67 @@ object TaskSelector {
         lists: List<TodoList>,
         tasks: List<Task>,
         overdueInterrupts: Boolean = true,
-    ): CurrentTask? {
+    ): CurrentTask? = rank(now, blocks, lists, tasks, overdueInterrupts).firstOrNull()
+
+    /** All candidates in the order they will be shown. The first one is [select]'s answer. */
+    fun rank(
+        now: LocalDateTime,
+        blocks: List<TimeBlock>,
+        lists: List<TodoList>,
+        tasks: List<Task>,
+        overdueInterrupts: Boolean = true,
+    ): List<CurrentTask> {
         val listsById = lists.associateBy { it.id }
         val blocksById = blocks.associateBy { it.id }
-        val open = tasks.filter { !it.done && it.listId in listsById }
-        val order = taskOrder(listsById)
+        val tasksById = tasks.associateBy { it.id }
+        val parentsWithOpenChildren = tasks.filter { !it.done && it.parentId != null }
+            .mapNotNull { it.parentId }.toSet()
+
+        fun deadlineOf(t: Task): LocalDateTime? =
+            t.deadline ?: t.parentId?.let { tasksById[it]?.deadline }
+
+        val actionable = tasks.filter {
+            !it.done && it.listId in listsById && it.id !in parentsWithOpenChildren
+        }
+        val order = taskOrder(listsById, ::deadlineOf)
 
         fun wrap(task: Task, reason: Reason): CurrentTask {
             val list = listsById.getValue(task.listId)
-            return CurrentTask(task, list, list.blockId?.let { blocksById[it] }, reason)
+            return CurrentTask(task, list, list.blockId?.let { blocksById[it] }, reason, deadlineOf(task))
         }
+
+        val result = ArrayList<CurrentTask>()
+        val used = HashSet<Long>()
 
         // 1. Worst offender: the earliest missed deadline.
         if (overdueInterrupts) {
-            open.filter { it.deadline != null && it.deadline < now }
-                .minWithOrNull(order)
-                ?.let { return wrap(it, Reason.OVERDUE) }
+            actionable.filter { deadlineOf(it)?.let { d -> d < now } == true }
+                .sortedWith(order)
+                .forEach { result += wrap(it, Reason.OVERDUE); used += it.id }
         }
 
         // 2. Tasks of the block(s) active right now.
         val activeBlockIds = blocks.filter { it.isActiveAt(now) }.map { it.id }.toSet()
-        open.filter { listsById.getValue(it.listId).blockId in activeBlockIds }
-            .minWithOrNull(order)
-            ?.let { return wrap(it, Reason.IN_BLOCK) }
+        actionable.filter { it.id !in used && listsById.getValue(it.listId).blockId in activeBlockIds }
+            .sortedWith(order)
+            .forEach { result += wrap(it, Reason.IN_BLOCK); used += it.id }
 
         // 3. Anytime lists.
-        open.filter { listsById.getValue(it.listId).blockId == null }
-            .minWithOrNull(order)
-            ?.let { return wrap(it, Reason.ANYTIME) }
+        actionable.filter { it.id !in used && listsById.getValue(it.listId).blockId == null }
+            .sortedWith(order)
+            .forEach { result += wrap(it, Reason.ANYTIME); used += it.id }
 
-        return null
+        return result
     }
 
     /** Soonest deadline first (no deadline last), then list order, task order, id. */
-    private fun taskOrder(lists: Map<Long, TodoList>): Comparator<Task> =
+    private fun taskOrder(
+        lists: Map<Long, TodoList>,
+        deadlineOf: (Task) -> LocalDateTime?,
+    ): Comparator<Task> =
         Comparator<Task> { a, b ->
-            val da = a.deadline
-            val db = b.deadline
+            val da = deadlineOf(a)
+            val db = deadlineOf(b)
             when {
                 da != null && db != null -> da.compareTo(db)
                 da != null -> -1

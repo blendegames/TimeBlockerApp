@@ -196,4 +196,66 @@ class TaskSelectorTest {
         val tasks = listOf(Task(1, 999, "Orphan"))
         assertNull(pick(at(10), tasks))
     }
+
+    // ---- subtasks ----
+
+    @Test
+    fun openSubtasksReplaceTheirParent() {
+        val tasks = listOf(
+            Task(1, 10, "Write summary", deadline = at(12)),
+            Task(2, 10, "Draft", parentId = 1, position = 0),
+            Task(3, 10, "Send", parentId = 1, position = 1),
+        )
+        val result = assertNotNull(pick(at(10), tasks))
+        assertEquals("Draft", result.task.title)
+    }
+
+    @Test
+    fun subtaskUsesItsOwnDeadlineAndInheritsOtherwise() {
+        val tasks = listOf(
+            Task(1, 10, "Parent", deadline = at(12)),
+            Task(2, 10, "Own deadline", deadline = at(11), parentId = 1, position = 1),
+            Task(3, 10, "Inherits", parentId = 1, position = 0),
+        )
+        val ranked = TaskSelector.rank(at(10), blocks, lists, tasks)
+        assertEquals(listOf("Own deadline", "Inherits"), ranked.map { it.task.title })
+        assertEquals(at(11), ranked[0].deadline)
+        assertEquals(at(12), ranked[1].deadline)
+    }
+
+    @Test
+    fun overdueSubtaskInterrupts() {
+        val tasks = listOf(
+            Task(1, 20, "Evening parent"),
+            Task(2, 20, "Late step", deadline = at(8), parentId = 1),
+            Task(3, 10, "Morning task"),
+        )
+        val result = assertNotNull(pick(at(10), tasks))
+        assertEquals("Late step", result.task.title)
+        assertEquals(Reason.OVERDUE, result.reason)
+    }
+
+    @Test
+    fun parentReturnsWhenAllSubtasksAreDone() {
+        val tasks = listOf(
+            Task(1, 10, "Parent"),
+            Task(2, 10, "Step", parentId = 1, done = true),
+        )
+        assertEquals("Parent", pick(at(10), tasks)?.task?.title)
+    }
+
+    @Test
+    fun rankListsEverythingInOrder() {
+        val tasks = listOf(
+            Task(1, 10, "In block"),
+            Task(2, 30, "Someday"),
+            Task(3, 20, "Late", deadline = at(8)),
+        )
+        val ranked = TaskSelector.rank(at(10), blocks, lists, tasks)
+        assertEquals(listOf("Late", "In block", "Someday"), ranked.map { it.task.title })
+        assertEquals(
+            listOf(Reason.OVERDUE, Reason.IN_BLOCK, Reason.ANYTIME),
+            ranked.map { it.reason },
+        )
+    }
 }

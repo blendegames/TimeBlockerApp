@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">FocusTask</string>
+    <string name="widget_small_desc">One task, one timer, one tap to finish it.</string>
+    <string name="widget_large_desc">The task carousel with the focus timer.</string>
+</resources>
