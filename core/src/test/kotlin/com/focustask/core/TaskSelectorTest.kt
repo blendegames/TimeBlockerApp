@@ -11,17 +11,16 @@ class TaskSelectorTest {
     // 2026-10-19 is a Monday.
     private fun at(h: Int, m: Int = 0, day: Int = 19) = LocalDateTime.of(2026, 10, day, h, m)
 
-    private val morning = TimeBlock(1, "Morning", LocalTime.of(9, 0), LocalTime.of(11, 0))
-    private val evening = TimeBlock(2, "Evening", LocalTime.of(18, 0), LocalTime.of(20, 0))
+    private val morning = TimeBlock(1, "Morning", LocalTime.of(9, 0), LocalTime.of(11, 0), listId = 10)
+    private val evening = TimeBlock(2, "Evening", LocalTime.of(18, 0), LocalTime.of(20, 0), listId = 20)
     private val blocks = listOf(morning, evening)
 
-    private val work = TodoList(10, "Work", blockId = 1, position = 0)
-    private val home = TodoList(20, "Home", blockId = 2, position = 1)
-    private val someday = TodoList(30, "Someday", blockId = null, position = 2)
+    private val work = TodoList(10, "Work", position = 0)
+    private val home = TodoList(20, "Home", position = 1)
+    private val someday = TodoList(30, "Someday", position = 2)
     private val lists = listOf(work, home, someday)
 
-    private fun pick(now: LocalDateTime, tasks: List<Task>, interrupts: Boolean = true) =
-        TaskSelector.select(now, blocks, lists, tasks, interrupts)
+    private fun pick(now: LocalDateTime, tasks: List<Task>) = TaskSelector.rank(now, blocks, lists, tasks).firstOrNull()
 
     @Test
     fun returnsNullWhenThereAreNoTasks() {
@@ -130,16 +129,6 @@ class TaskSelectorTest {
     }
 
     @Test
-    fun overdueInterruptCanBeDisabled() {
-        val tasks = listOf(
-            Task(1, 10, "Morning task"),
-            Task(2, 20, "Missed", deadline = at(8)),
-        )
-        val result = assertNotNull(pick(at(10), tasks, interrupts = false))
-        assertEquals("Morning task", result.task.title)
-    }
-
-    @Test
     fun doneTasksAreIgnored() {
         val tasks = listOf(
             Task(1, 10, "Finished", deadline = at(8), done = true),
@@ -173,14 +162,14 @@ class TaskSelectorTest {
     fun overlappingBlocksCompeteByDeadlineThenListOrder() {
         val overlapping = listOf(
             morning,
-            TimeBlock(3, "Admin", LocalTime.of(10, 0), LocalTime.of(12, 0)),
+            TimeBlock(3, "Admin", LocalTime.of(10, 0), LocalTime.of(12, 0), listId = 40),
         )
-        val adminList = TodoList(40, "Admin", blockId = 3, position = 3)
+        val adminList = TodoList(40, "Admin", position = 3)
         val tasks = listOf(
             Task(1, 10, "Work task", position = 0),
             Task(2, 40, "Admin task", deadline = at(17)),
         )
-        val result = TaskSelector.select(at(10, 30), overlapping, lists + adminList, tasks)
+        val result = TaskSelector.rank(at(10, 30), overlapping, lists + adminList, tasks).firstOrNull()
         assertEquals("Admin task", result?.task?.title)
     }
 
@@ -257,5 +246,37 @@ class TaskSelectorTest {
             listOf(Reason.OVERDUE, Reason.IN_BLOCK, Reason.ANYTIME),
             ranked.map { it.reason },
         )
+    }
+
+    @Test
+    fun aListWithSeveralBlocksIsActiveInEachOfThem() {
+        val twoBlocks = listOf(morning, TimeBlock(5, "Work again", LocalTime.of(14, 0), LocalTime.of(15, 0), listId = 10))
+        val tasks = listOf(Task(1, 10, "Work task"), Task(2, 30, "Someday"))
+        val afternoon = TaskSelector.rank(at(14, 30), twoBlocks, lists, tasks).firstOrNull()
+        assertEquals("Work task", afternoon?.task?.title)
+        assertEquals(Reason.IN_BLOCK, afternoon?.reason)
+        assertEquals(5L, afternoon?.block?.id)
+        // between the two blocks the list is not anytime: only the real anytime list shows
+        val between = TaskSelector.rank(at(12), twoBlocks, lists, tasks).firstOrNull()
+        assertEquals("Someday", between?.task?.title)
+    }
+
+    @Test
+    fun aSkippedTaskGoesBehindTheOthersAndComesBackWhenNothingElseIsLeft() {
+        val tasks = listOf(Task(1, 10, "A", position = 0), Task(2, 10, "B", position = 1), Task(3, 10, "C", position = 2))
+        fun order(skipped: List<Long>) = TaskSelector.rank(at(10), blocks, lists, tasks, skipped).map { it.task.title }
+        assertEquals(listOf("A", "B", "C"), order(emptyList()))
+        assertEquals(listOf("B", "C", "A"), order(listOf(1)))
+        // skipped one after the other: the one skipped last waits longest
+        assertEquals(listOf("C", "A", "B"), order(listOf(1, 2)))
+        // a lonely task that is skipped is still there
+        assertEquals(listOf("A"), TaskSelector.rank(at(10), blocks, lists, listOf(tasks[0]), listOf(1)).map { it.task.title })
+    }
+
+    @Test
+    fun skippingBeatsEvenAnOverdueTask() {
+        val tasks = listOf(Task(1, 10, "Late", deadline = at(8)), Task(2, 10, "Fine", position = 1))
+        assertEquals("Late", pick(at(10), tasks)?.task?.title)
+        assertEquals("Fine", TaskSelector.rank(at(10), blocks, lists, tasks, listOf(1)).firstOrNull()?.task?.title)
     }
 }

@@ -1,5 +1,11 @@
 <resources>
     <color name="ft_bg">#F4F5F2</color>
-    <color name="ft_green">#2F5D50</color>
     <color name="ft_launcher_bg">#2F5D50</color>
+    <!-- the widget previews in the widget picker: the colors of the widgets themselves -->
+    <color name="wp_bg">#FFFFFF</color>
+    <color name="wp_ink">#141A17</color>
+    <color name="wp_muted">#5F6B66</color>
+    <color name="wp_accent">#2F5D50</color>
+    <color name="wp_on_accent">#FFFFFF</color>
+    <color name="wp_card">#DCE9E4</color>
 </resources>

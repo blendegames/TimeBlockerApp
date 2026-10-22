@@ -46,12 +46,15 @@ object Schedule {
 data class CycleSettings(
     val workMin: Int = 25,
     val shortBreakMin: Int = 5,
+    /** How long a long break lasts. 0 means no long breaks. */
     val longBreakMin: Int = 15,
     /** Size of the big "block ends in" countdown. */
     val countdownMin: Int = 10,
+    /** A block this long (in minutes) or longer is followed by a long break. */
+    val longBreakAfterMin: Int = 120,
 ) {
     init {
-        require(workMin > 0 && shortBreakMin >= 0 && longBreakMin >= 0 && countdownMin >= 0)
+        require(workMin > 0 && shortBreakMin >= 0 && longBreakMin >= 0 && countdownMin >= 0 && longBreakAfterMin >= 15)
     }
 
     val cycleMin: Int get() = workMin + shortBreakMin
@@ -142,27 +145,42 @@ data class UserBreak(val from: LocalDateTime, val until: LocalDateTime)
 
 object BreakPlanner {
     /**
-     * - Every block that ends is followed by a long break of [longBreakMin], even when the
-     *   next block starts right away.
+     * The times when a long break starts: when a block ends, if that block is at least
+     * [CycleSettings.longBreakAfterMin] minutes long. Shorter blocks are followed by no long break.
+     */
+    fun starts(instances: List<BlockInstance>, s: CycleSettings): List<LocalDateTime> {
+        if (s.longBreakMin <= 0) return emptyList()
+        return instances.filter { it.length.toMinutes() >= s.longBreakAfterMin }.map { it.end }.sorted()
+    }
+
+    /** The long breaks, soonest first. */
+    fun windows(instances: List<BlockInstance>, s: CycleSettings): List<LongBreak> =
+        starts(instances, s).map { LongBreak(it, it.plusMinutes(s.longBreakMin.toLong()), false) }
+
+    /**
+     * - A long break follows every block of at least [CycleSettings.longBreakAfterMin] minutes (see [starts]).
      * - After finishing early the user can break until the next block starts; that break
      *   lasts exactly as long as the time left, however short.
      */
     fun current(
         now: LocalDateTime,
         instances: List<BlockInstance>,
-        longBreakMin: Int,
+        s: CycleSettings,
         userBreak: UserBreak?,
     ): LongBreak? {
         if (userBreak != null && now >= userBreak.from && now < userBreak.until) {
             return LongBreak(userBreak.from, userBreak.until, true)
         }
-        val last = instances.filter { it.end <= now }.maxByOrNull { it.end } ?: return null
-        val until = last.end.plusMinutes(longBreakMin.toLong())
-        return if (longBreakMin > 0 && now < until) LongBreak(last.end, until, false) else null
+        return windows(instances, s).firstOrNull { now >= it.from && now < it.until }
     }
 }
 
-enum class AlertKind { CYCLE_CHIME, PHASE_CUE, BLOCK_ENDING }
+/**
+ * [CYCLE_CHIME]: back to work, at every large bubble and when a break is over. [PHASE_CUE]: time for a break.
+ * [BLOCK_STARTING] / [BLOCK_ENDING]: the moment a block starts or ends. Its vibration builds up to that moment
+ * (see [Vibrations.leadMs]), and the sound plays right on it.
+ */
+enum class AlertKind { CYCLE_CHIME, PHASE_CUE, BLOCK_STARTING, BLOCK_ENDING }
 
 data class AlertEvent(val at: LocalDateTime, val kind: AlertKind)
 
@@ -173,8 +191,8 @@ object AlertPlanner {
         instances: List<BlockInstance>,
         s: CycleSettings,
         userBreak: UserBreak?,
-        maxInstances: Int = 3,
     ): List<AlertEvent> {
+        val maxInstances = 3
         val out = ArrayList<AlertEvent>()
         for (inst in instances.filter { it.end > now }.take(maxInstances)) {
             var k = 0
@@ -185,15 +203,15 @@ object AlertPlanner {
                 if (boundary < inst.end) out += AlertEvent(boundary, AlertKind.CYCLE_CHIME) else break
                 k++
             }
-            if (s.countdownMin > 0) {
-                val t = inst.end.minusMinutes(s.countdownMin.toLong())
-                if (t > inst.start) out += AlertEvent(t, AlertKind.BLOCK_ENDING)
-            }
+            out += AlertEvent(inst.start, AlertKind.BLOCK_STARTING)
+            out += AlertEvent(inst.end, AlertKind.BLOCK_ENDING)
         }
-        for (inst in instances.filter { it.end.plusMinutes(s.longBreakMin.toLong()) > now }.take(maxInstances)) {
-            if (s.longBreakMin > 0) out += AlertEvent(inst.end.plusMinutes(s.longBreakMin.toLong()), AlertKind.PHASE_CUE)
+        // a long break: a break cue when it starts, and back to work when it is over
+        for (w in BreakPlanner.windows(instances, s).filter { it.until > now }.take(maxInstances)) {
+            out += AlertEvent(w.from, AlertKind.PHASE_CUE)
+            out += AlertEvent(w.until, AlertKind.CYCLE_CHIME)
         }
-        if (userBreak != null) out += AlertEvent(userBreak.until, AlertKind.PHASE_CUE)
+        if (userBreak != null) out += AlertEvent(userBreak.until, AlertKind.CYCLE_CHIME)
         return out.filter { it.at > now }.distinct().sortedWith(compareBy({ it.at }, { it.kind }))
     }
 }

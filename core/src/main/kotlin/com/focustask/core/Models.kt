@@ -5,7 +5,8 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 
 /**
- * A window in the day, e.g. 09:00-11:00. A block is named after the list it shows.
+ * A window in the day, e.g. 09:00-11:00. A block shows one list and is named after it.
+ * A list can have several blocks (09:00-11:00 on weekdays, 14:00-15:00 on Saturday, ...).
  *
  * If [end] is earlier than [start] the block crosses midnight (e.g. 22:00-02:00).
  * [days] are the days the block STARTS on.
@@ -16,6 +17,8 @@ data class TimeBlock(
     val start: LocalTime,
     val end: LocalTime,
     val days: Set<DayOfWeek> = DayOfWeek.values().toSet(),
+    /** The list this block shows. */
+    val listId: Long? = null,
 ) {
     init {
         require(start != end) { "A time block must have a start different from its end" }
@@ -35,11 +38,10 @@ data class TimeBlock(
     }
 }
 
-/** A todo list with its own title. [blockId] = null means "anytime" (no time block). */
+/** A todo list with its own title. A list without any time block is an "anytime" list. */
 data class TodoList(
     val id: Long,
     val title: String,
-    val blockId: Long? = null,
     /** Manual order of lists; lower comes first. */
     val position: Int = 0,
 )
@@ -58,4 +60,30 @@ data class Task(
     val done: Boolean = false,
     val parentId: Long? = null,
     val completedAt: LocalDateTime? = null,
+    /** A repeating ("permanent") task: when it is done it comes back by itself. Only main tasks repeat; their subtasks come back with them. */
+    val repeat: Repeat? = null,
 )
+
+enum class RepeatUnit { DAY, WEEK, MONTH }
+
+/** "Every [every] [unit]". A task that was completed comes back as not done at the start of the day that many units later. */
+data class Repeat(val every: Int, val unit: RepeatUnit) {
+    init { require(every >= 1) { "a task cannot repeat every $every" } }
+
+    /** "Every day", "Every 2 weeks", "Every month" … */
+    fun label(): String {
+        val word = when (unit) { RepeatUnit.DAY -> "day"; RepeatUnit.WEEK -> "week"; RepeatUnit.MONTH -> "month" }
+        return if (every == 1) "Every $word" else "Every $every ${word}s"
+    }
+
+    /** When a task completed at [completedAt] comes back: midnight, [every] [unit]s after the day it was completed. */
+    fun comesBackAfter(completedAt: LocalDateTime): LocalDateTime {
+        val day = completedAt.toLocalDate()
+        val back = when (unit) {
+            RepeatUnit.DAY -> day.plusDays(every.toLong())
+            RepeatUnit.WEEK -> day.plusWeeks(every.toLong())
+            RepeatUnit.MONTH -> day.plusMonths(every.toLong())
+        }
+        return back.atStartOfDay()
+    }
+}

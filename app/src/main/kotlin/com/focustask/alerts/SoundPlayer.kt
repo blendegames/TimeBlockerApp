@@ -117,5 +117,4 @@ object SoundPlayer {
         return pb
     }
 
-    fun stopPreview() { main.post { current?.stop() } }
 }

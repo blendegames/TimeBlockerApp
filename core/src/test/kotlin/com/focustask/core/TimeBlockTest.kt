@@ -4,7 +4,6 @@ import java.time.DayOfWeek
 import java.time.LocalDateTime
 import java.time.LocalTime
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -57,10 +56,5 @@ class TimeBlockTest {
         assertFailsWith<IllegalArgumentException> {
             TimeBlock(3, "Nothing", LocalTime.of(9, 0), LocalTime.of(9, 0))
         }
-    }
-
-    @Test
-    fun nameIsKept() {
-        assertEquals("Deep work", morning.name)
     }
 }

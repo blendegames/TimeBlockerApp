@@ -3,14 +3,22 @@ package com.focustask
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.content.Context
-import android.view.View
-import android.widget.FrameLayout
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
+import androidx.glance.testing.unit.hasContentDescription
+import androidx.glance.testing.unit.hasText
 import androidx.test.core.app.ApplicationProvider
 import com.focustask.alerts.Alerts
-import com.focustask.alerts.Notifier
-import com.focustask.core.FocusEngine
-import com.focustask.widget.FocusLargeWidget
-import com.focustask.widget.FocusWidget
+import com.focustask.core.BarKind
+import com.focustask.core.TimerBar
+import com.focustask.widget.LargeContent
+import com.focustask.widget.SmallContent
+import com.focustask.widget.StripRenderer
+import com.focustask.widget.loadWidgetModel
+import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -20,13 +28,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import java.io.File
-import java.time.LocalDateTime
 
 /** Notification, alarms and widgets, run against Robolectric's fake Android. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h844dp-xhdpi", application = FocusApp::class)
+@Config(sdk = [34], qualifiers = "w390dp-h844dp-xhdpi", application = TestFocusApp::class)
 class PlatformTest {
     private val app get() = ApplicationProvider.getApplicationContext<FocusApp>()
 
@@ -50,38 +56,41 @@ class PlatformTest {
 
     @Test fun smallWidgetComposesWithTheTaskAndDone() = runBlocking {
         seeded()
-        val model = com.focustask.widget.loadWidgetModel(app)
-        androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest {
+        val model = loadWidgetModel(app)
+        runGlanceAppWidgetUnitTest {
             setContext(app)
-            provideComposable { com.focustask.widget.SmallContent(app, model) }
+            provideComposable { SmallContent(app, model) }
             val task = model.focus.carousel!!.current.task.title
-            onNode(androidx.glance.testing.unit.hasText(task)).assertExists()
-            onNode(androidx.glance.testing.unit.hasText("Done")).assertExists()
+            onNode(hasText(task)).assertExists()
+            onNode(hasContentDescription("Done")).assertExists()
         }
     }
 
     @Test fun largeWidgetComposesTheCarousel() = runBlocking {
         seeded()
-        val model = com.focustask.widget.loadWidgetModel(app)
-        androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest {
+        val model = loadWidgetModel(app)
+        runGlanceAppWidgetUnitTest {
             setContext(app)
-            provideComposable { com.focustask.widget.LargeContent(app, model) }
+            provideComposable { LargeContent(app, model) }
             val c = model.focus.carousel!!
-            onNode(androidx.glance.testing.unit.hasText(c.current.task.title)).assertExists()
-            onNode(androidx.glance.testing.unit.hasText("Done")).assertExists()
+            onNode(hasText(c.current.task.title)).assertExists()
+            onNode(hasContentDescription("Done")).assertExists()
         }
     }
 
-    @Test fun stripBitmapDraws() {
-        val bar = com.focustask.core.TimerBar(
-            com.focustask.core.BarKind.FOCUS_WORK, 780, 0.6, setOf(0, 3, 6, 9, 12), null, null,
+    @Test fun theWidgetsTimerStripIsDrawn() {
+        val bar = TimerBar(
+            BarKind.FOCUS_WORK, 780, 0.6, setOf(0, 3, 6, 9, 12), null, null,
         )
         val d = app.resources.displayMetrics.density
-        val bmp = com.focustask.widget.StripRenderer.render(bar, (320 * d).toInt(), (28 * d).toInt(), 0xFF2F5D50.toInt(), d)
-        val big = android.graphics.Bitmap.createBitmap(bmp.width, bmp.height, android.graphics.Bitmap.Config.ARGB_8888)
-        big.eraseColor(android.graphics.Color.WHITE)
-        android.graphics.Canvas(big).drawBitmap(bmp, 0f, 0f, null)
+        val bmp = StripRenderer.render(bar, (320 * d).toInt(), (28 * d).toInt(), 0xFF2F5D50.toInt(), d)
+        val big = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
+        big.eraseColor(Color.WHITE)
+        Canvas(big).drawBitmap(bmp, 0f, 0f, null)
         File("build/screens").mkdirs()
-        java.io.FileOutputStream("build/screens/42_strip.png").use { big.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        FileOutputStream("build/screens/42_strip.png").use { big.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // the strip is drawn: some of it is in the strip's color
+        val pixels = IntArray(bmp.width * bmp.height).also { bmp.getPixels(it, 0, bmp.width, 0, 0, bmp.width, bmp.height) }
+        org.junit.Assert.assertTrue(pixels.any { Color.alpha(it) > 0 })
     }
 }

@@ -17,7 +17,7 @@ enum class Reason {
 data class CurrentTask(
     val task: Task,
     val list: TodoList,
-    /** The list's block, or null for "anytime" lists. */
+    /** The list's block that is active now (else its first block); null for "anytime" lists. */
     val block: TimeBlock?,
     val reason: Reason,
     /** The deadline that counts: the task's own, or its parent's. */
@@ -31,32 +31,26 @@ data class CurrentTask(
  *  1. Most overdue task, from any list or block (worst offender first).
  *  2. Within the active time block(s): soonest deadline first, then manual order.
  *  3. Fallback: same ordering across "anytime" lists.
+ *  4. Tasks the person skipped go behind all the others, in the order they were skipped.
  *
  * Only tasks you can actually do are candidates: a task that still has open subtasks
  * is replaced by those subtasks.
  *
- * Returns null when there is nothing to do right now.
+ * The list is empty when there is nothing to do right now.
  */
 object TaskSelector {
 
-    fun select(
-        now: LocalDateTime,
-        blocks: List<TimeBlock>,
-        lists: List<TodoList>,
-        tasks: List<Task>,
-        overdueInterrupts: Boolean = true,
-    ): CurrentTask? = rank(now, blocks, lists, tasks, overdueInterrupts).firstOrNull()
-
-    /** All candidates in the order they will be shown. The first one is [select]'s answer. */
+    /** All candidates in the order they will be shown: the first one is the task to do now. */
     fun rank(
         now: LocalDateTime,
         blocks: List<TimeBlock>,
         lists: List<TodoList>,
         tasks: List<Task>,
-        overdueInterrupts: Boolean = true,
+        /** Tasks put aside for now ("skip"), the one skipped last at the end. They come back when nothing else is left. */
+        skipped: List<Long> = emptyList(),
     ): List<CurrentTask> {
         val listsById = lists.associateBy { it.id }
-        val blocksById = blocks.associateBy { it.id }
+        val blocksByList = blocks.filter { it.listId != null }.groupBy { it.listId!! }
         val tasksById = tasks.associateBy { it.id }
         val parentsWithOpenChildren = tasks.filter { !it.done && it.parentId != null }
             .mapNotNull { it.parentId }.toSet()
@@ -71,31 +65,33 @@ object TaskSelector {
 
         fun wrap(task: Task, reason: Reason): CurrentTask {
             val list = listsById.getValue(task.listId)
-            return CurrentTask(task, list, list.blockId?.let { blocksById[it] }, reason, deadlineOf(task))
+            val own = blocksByList[list.id].orEmpty()
+            val block = own.firstOrNull { it.isActiveAt(now) } ?: own.minByOrNull { it.start }
+            return CurrentTask(task, list, block, reason, deadlineOf(task))
         }
 
         val result = ArrayList<CurrentTask>()
         val used = HashSet<Long>()
 
         // 1. Worst offender: the earliest missed deadline.
-        if (overdueInterrupts) {
-            actionable.filter { deadlineOf(it)?.let { d -> d < now } == true }
-                .sortedWith(order)
-                .forEach { result += wrap(it, Reason.OVERDUE); used += it.id }
-        }
+        actionable.filter { deadlineOf(it)?.let { d -> d < now } == true }
+            .sortedWith(order)
+            .forEach { result += wrap(it, Reason.OVERDUE); used += it.id }
 
         // 2. Tasks of the block(s) active right now.
-        val activeBlockIds = blocks.filter { it.isActiveAt(now) }.map { it.id }.toSet()
-        actionable.filter { it.id !in used && listsById.getValue(it.listId).blockId in activeBlockIds }
+        val activeListIds = blocks.filter { it.isActiveAt(now) }.mapNotNull { it.listId }.toSet()
+        actionable.filter { it.id !in used && it.listId in activeListIds }
             .sortedWith(order)
             .forEach { result += wrap(it, Reason.IN_BLOCK); used += it.id }
 
         // 3. Anytime lists.
-        actionable.filter { it.id !in used && listsById.getValue(it.listId).blockId == null }
+        actionable.filter { it.id !in used && it.listId !in blocksByList }
             .sortedWith(order)
             .forEach { result += wrap(it, Reason.ANYTIME); used += it.id }
 
-        return result
+        if (skipped.isEmpty()) return result
+        val aside = skipped.mapNotNull { id -> result.firstOrNull { it.task.id == id } }
+        return result.filter { it.task.id !in skipped } + aside
     }
 
     /** Soonest deadline first (no deadline last), then list order, task order, id. */

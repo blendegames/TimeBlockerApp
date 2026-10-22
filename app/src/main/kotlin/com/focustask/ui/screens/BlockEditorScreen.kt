@@ -1,5 +1,10 @@
 package com.focustask.ui.screens
 
+import com.focustask.ui.theme.TitleSize
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,21 +64,27 @@ import java.util.Locale
 fun BlockEditorScreen(ui: UiState, vm: MainViewModel, target: BlockTarget, p: Palette, onClose: () -> Unit) {
     val data = ui.data
     val editing = (target as? BlockTarget.Edit)?.blockId?.let { data.block(it) }
-    val existingColor = (target as? BlockTarget.Edit)?.blockId?.let { data.colors[it] } ?: (data.blocks.size % BLOCK_COLORS.size)
+    // Tapping an empty spot of a grid opens the editor with that time (one hour) and that weekday.
+    val tapped = target as? BlockTarget.New
 
-    var listId by remember { mutableStateOf<Long?>(editing?.let { data.listOfBlock(it.id)?.id }) }
-    var start by remember { mutableStateOf(editing?.start ?: LocalTime.of(9, 0)) }
-    var end by remember { mutableStateOf(editing?.end ?: LocalTime.of(10, 0)) }
-    var days by remember { mutableStateOf(editing?.days ?: DayOfWeek.values().toSet()) }
-    var color by remember { mutableStateOf(existingColor) }
+    var listId by remember { mutableStateOf<Long?>(editing?.let { data.listOfBlock(it.id)?.id } ?: tapped?.listId) }
+    var start by remember { mutableStateOf(editing?.start ?: tapped?.start ?: LocalTime.of(9, 0)) }
+    var end by remember { mutableStateOf(editing?.end ?: tapped?.end ?: tapped?.start?.plusHours(1) ?: LocalTime.of(10, 0)) }
+    var days by remember {
+        mutableStateOf(editing?.days ?: tapped?.day?.let { setOf(it) } ?: DayOfWeek.values().toSet())
+    }
+    // The color belongs to the list: every block of a list looks the same.
+    var color by remember { mutableStateOf(listId?.let { data.colors[it] } ?: 0) }
+    LaunchedEffect(listId, listId?.let { data.colors.containsKey(it) }) {
+        listId?.let { id -> data.colors[id]?.let { color = it } }
+    }
     var menu by remember { mutableStateOf(false) }
     var pickStart by remember { mutableStateOf(false) }
     var pickEnd by remember { mutableStateOf(false) }
     var newList by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
 
-    // Lists that are free, or already belong to this block.
-    val choices = data.lists.filter { it.blockId == null || it.blockId == editing?.id }
+    // Any list can have blocks, also one that already has some: a block is a preset of time and days.
+    val choices = data.lists
     val chosen = data.lists.firstOrNull { it.id == listId }
     val valid = chosen != null && start != end && days.isNotEmpty()
 
@@ -81,7 +93,7 @@ fun BlockEditorScreen(ui: UiState, vm: MainViewModel, target: BlockTarget, p: Pa
             Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Close, "Close", tint = p.ink)
             }
-            Text(if (editing == null) "New time block" else "Edit time block", color = p.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(if (editing == null) "New time block" else "Edit time block", color = p.ink, fontSize = TitleSize, fontWeight = FontWeight.Bold)
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
             Label("List shown in this block", p)
@@ -150,7 +162,8 @@ fun BlockEditorScreen(ui: UiState, vm: MainViewModel, target: BlockTarget, p: Pa
                         Modifier.size(44.dp).clip(CircleShape)
                             .background(if (on) p.accent else Color.Transparent)
                             .border(2.dp, if (on) p.accent else p.line, CircleShape)
-                            .clickable { days = if (on) days - d else days + d },
+                            .toggleable(on, role = Role.Checkbox) { days = if (on) days - d else days + d }
+                            .semantics { contentDescription = d.getDisplayName(TextStyle.FULL, Locale.getDefault()) },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(d.getDisplayName(TextStyle.NARROW, Locale.getDefault()), color = if (on) p.onAccent else p.muted, fontWeight = FontWeight.Bold)
@@ -158,27 +171,43 @@ fun BlockEditorScreen(ui: UiState, vm: MainViewModel, target: BlockTarget, p: Pa
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
-            Label("Color", p)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BLOCK_COLORS.forEachIndexed { i, c ->
-                    Box(
-                        Modifier.size(44.dp).clip(CircleShape).background(Color(c))
-                            .then(if (i == color) Modifier.border(3.dp, p.ink, CircleShape) else Modifier)
-                            .clickable { color = i },
-                    )
+            Text(
+                if ((target as? BlockTarget.New)?.fromDay == true) "It shows up today as well, and repeats on these days."
+                else "Changes to the weekly plan start tomorrow. Today keeps the layout it began with.",
+                color = p.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp),
+            )
+
+            if (chosen != null) {
+                Spacer(Modifier.height(24.dp))
+                Label("Color of ${chosen.title}", p)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BLOCK_COLORS.forEachIndexed { i, c ->
+                        Box(
+                            Modifier.size(48.dp).clip(CircleShape).background(Color(c))
+                                .then(if (i == color) Modifier.border(3.dp, p.ink, CircleShape) else Modifier)
+                                .colorChoice(i, i == color) { color = i },
+                        )
+                    }
                 }
+                val others = chosen?.let { c -> data.blocksOfList(c.id).count { it.id != editing?.id } } ?: 0
+                Text(
+                    if (others > 0) "All ${others + 1} blocks of this list use this color."
+                    else "Every block of this list uses this color.",
+                    color = p.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp),
+                )
             }
             if (editing != null) {
                 Spacer(Modifier.height(24.dp))
-                TextButton(onClick = { confirmDelete = true }) { Text("Delete this block", color = p.danger, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = { vm.run { deleteBlock(editing.id) }; onClose() }) { Text("Delete this block", color = p.danger, fontWeight = FontWeight.Bold) }
             }
             Spacer(Modifier.height(16.dp))
         }
         Button(
             onClick = {
                 val id = editing?.id
-                vm.run { saveBlock(id, listId!!, start, end, days, color) }
+                val timesChanged = editing == null || start != editing.start || end != editing.end
+                val fromDay = (target as? BlockTarget.New)?.fromDay == true
+                vm.run { saveBlock(id, listId!!, start, end, days, color, showToday = fromDay, resetDayTimes = timesChanged) }
                 onClose()
             },
             enabled = valid,
@@ -190,17 +219,10 @@ fun BlockEditorScreen(ui: UiState, vm: MainViewModel, target: BlockTarget, p: Pa
 
     if (pickStart) TimeDialog("Starts", start, { pickStart = false }) { start = it; pickStart = false }
     if (pickEnd) TimeDialog("Ends", end, { pickEnd = false }) { end = it; pickEnd = false }
-    if (newList) TextEditDialog("New list", "", "Create", onDismiss = { newList = false }) { name ->
+    if (newList) NewListDialog(data.suggestedColor(), p, onDismiss = { newList = false }) { name, pickedColor ->
         newList = false; menu = false
-        vm.run { listId = addList(name) }
+        vm.run { listId = addList(name, pickedColor) }
     }
-    if (confirmDelete && editing != null) androidx.compose.material3.AlertDialog(
-        onDismissRequest = { confirmDelete = false },
-        title = { Text("Delete this block?") },
-        text = { Text("The block disappears from every day. Its list and tasks stay in Lists, and the list becomes an anytime list.") },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; vm.run { deleteBlock(editing.id) }; onClose() }) { Text("Delete", color = p.danger) } },
-        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-    )
 }
 
 @Composable

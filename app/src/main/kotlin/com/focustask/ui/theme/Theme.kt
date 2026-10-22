@@ -1,6 +1,19 @@
 package com.focustask.ui.theme
 
+import android.animation.ValueAnimator
+import android.os.Build
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -16,7 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 /** What the main screens are "about" right now. It decides the colours. */
-enum class Tone { FOCUS, OVERDUE, BREAK, ENDING }
+enum class Tone { FOCUS, BREAK, ENDING }
 
 @Immutable
 data class Palette(
@@ -43,6 +56,13 @@ data class Palette(
 private val SunFill = Color(0xFFFFF4DB)
 private val SunRing = Color(0xFFD9930A)
 val SunFillColor get() = SunFill
+
+/** The size of every screen and page title (Day, Week, Lists, Settings and the pages inside them, Today's states). */
+val TitleSize = 28.sp
+
+/** Overdue, in light and dark: the red of the OVERDUE pill and of the outline round an overdue card, with white on it. */
+val OverdueRed = Color(0xFFB42318)
+val OnDanger = Color.White
 val SunRingColor get() = SunRing
 
 private fun c(v: Long) = Color(v)
@@ -56,15 +76,6 @@ fun paletteFor(tone: Tone, dark: Boolean): Palette = when (tone) {
         true, c(0xFF0F1311), c(0xFF1A201D), c(0xFFEEF2EF), c(0xFF9AA7A1), c(0xFF7CC4AE), c(0xFF0F1311),
         c(0xFF24312C), c(0xFFEEF2EF), c(0xFF24312C), c(0xFF7CC4AE), c(0xFF1A201D), c(0xFF2A332F),
         c(0xFF252C28), c(0xFFFF8A80), c(0xFF3A1C19), c(0xFF7CC4AE), c(0xFF151A18),
-    )
-    Tone.OVERDUE -> if (!dark) Palette(
-        true, c(0xFFB42318), c(0xFF8F1B12), c(0xFFFFFFFF), c(0xFFF6CFCB), c(0xFFFFFFFF), c(0xFFB42318),
-        c(0xFF7A1510), c(0xFFFFFFFF), c(0xFF7A1510), c(0xFFFFFFFF), c(0xFF7A1510), c(0xFFD35A50),
-        c(0xFF8F1B12), c(0xFFFFE08A), c(0xFF7A1510), c(0xFFFFE08A), c(0xFFFFFFFF),
-    ) else Palette(
-        true, c(0xFF7A1510), c(0xFF5C0F0B), c(0xFFFFFFFF), c(0xFFE8B9B4), c(0xFFFFFFFF), c(0xFF7A1510),
-        c(0xFF4F0E0A), c(0xFFFFFFFF), c(0xFF4F0E0A), c(0xFFFFFFFF), c(0xFF4F0E0A), c(0xFFA3463E),
-        c(0xFF5C0F0B), c(0xFFFFE08A), c(0xFF4F0E0A), c(0xFFFFE08A), c(0xFF151A18),
     )
     Tone.BREAK -> if (!dark) Palette(
         false, c(0xFFECEFF8), c(0xFFFFFFFF), c(0xFF141A17), c(0xFF5A6280), c(0xFF3B4F9A), c(0xFFFFFFFF),
@@ -86,6 +97,56 @@ fun paletteFor(tone: Tone, dark: Boolean): Palette = when (tone) {
     )
 }
 
+/**
+ * The palette with the wallpaper's colors ([wall], Android 12+) on the backgrounds and accents. The long break takes
+ * the wallpaper's third color, so it still looks different from work. Ending keeps its amber, on the wallpaper's backgrounds.
+ */
+fun paletteFor(tone: Tone, dark: Boolean, wall: ColorScheme?): Palette {
+    val base = paletteFor(tone, dark)
+    if (wall == null) return base
+    return when (tone) {
+        // the long break keeps its own role: the wallpaper's third color instead of the blue
+        Tone.BREAK -> base.copy(
+            bg = wall.surface, surface = if (dark) wall.surfaceContainer else wall.surfaceContainerLowest,
+            ink = wall.onSurface, muted = wall.onSurfaceVariant,
+            accent = wall.tertiary, onAccent = wall.onTertiary,
+            card = wall.tertiaryContainer, cardInk = wall.onTertiaryContainer,
+            pill = wall.tertiaryContainer, pillInk = wall.onTertiaryContainer,
+            bar = wall.tertiaryContainer, line = wall.outlineVariant, chip = wall.surfaceContainerHigh,
+            bubble = wall.tertiary, navBg = wall.surfaceContainer,
+        )
+        Tone.FOCUS -> base.copy(
+            bg = wall.surface, surface = if (dark) wall.surfaceContainer else wall.surfaceContainerLowest,
+            ink = wall.onSurface, muted = wall.onSurfaceVariant,
+            accent = wall.primary, onAccent = wall.onPrimary,
+            card = wall.secondaryContainer, cardInk = wall.onSecondaryContainer,
+            pill = wall.secondaryContainer, pillInk = wall.onSecondaryContainer,
+            bar = wall.surfaceContainerHigh, line = wall.outlineVariant, chip = wall.surfaceContainerHigh,
+            bubble = wall.primary, navBg = wall.surfaceContainer,
+        )
+        Tone.ENDING -> base.copy(
+            bg = wall.surface, surface = if (dark) wall.surfaceContainer else wall.surfaceContainerLowest,
+            line = wall.outlineVariant, chip = wall.surfaceContainerHigh, navBg = wall.surfaceContainer,
+        )
+    }
+}
+
+/**
+ * The phone's "Remove animations" accessibility setting is on: the app then changes at once, without turning wheels,
+ * dropping shades or spinning icons.
+ */
+val LocalReduceMotion = staticCompositionLocalOf { false }
+
+fun animationsOff(): Boolean = !ValueAnimator.areAnimatorsEnabled()
+
+/** The wallpaper's color scheme when "Match my wallpaper" is on, else null. */
+val LocalWallpaper = staticCompositionLocalOf<ColorScheme?> { null }
+
+/** [paletteFor] with the wallpaper's colors when they are switched on. */
+@Composable
+@ReadOnlyComposable
+fun palette(tone: Tone, dark: Boolean): Palette = paletteFor(tone, dark, LocalWallpaper.current)
+
 val LocalPalette = staticCompositionLocalOf { paletteFor(Tone.FOCUS, false) }
 
 private val Sans = FontFamily.SansSerif
@@ -101,9 +162,16 @@ private val FocusTypography = Typography(
 )
 
 @Composable
-fun FocusTheme(content: @Composable () -> Unit) {
+fun FocusTheme(wallpaper: Boolean = false, content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme()
-    val p = paletteFor(Tone.FOCUS, dark)
+    val ctx = LocalContext.current
+    val wall = if (wallpaper && Build.VERSION.SDK_INT >= 31) {
+        if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+    } else null
+    val p = paletteFor(Tone.FOCUS, dark, wall)
+    // read again each time the app comes back: the setting is changed outside the app
+    var still by remember { mutableStateOf(animationsOff()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { still = animationsOff() }
     val scheme = if (dark) darkColorScheme(
         primary = p.accent, onPrimary = p.onAccent, surface = p.surface, onSurface = p.ink,
         background = p.bg, onBackground = p.ink, surfaceVariant = p.card, onSurfaceVariant = p.muted,
@@ -117,7 +185,7 @@ fun FocusTheme(content: @Composable () -> Unit) {
         surfaceContainerHigh = p.surface, surfaceContainerHighest = p.card, surfaceContainer = p.surface,
         primaryContainer = p.card, onPrimaryContainer = p.ink,
     )
-    CompositionLocalProvider(LocalPalette provides p) {
+    CompositionLocalProvider(LocalPalette provides p, LocalWallpaper provides wall, LocalReduceMotion provides still) {
         MaterialTheme(colorScheme = scheme, typography = FocusTypography, content = content)
     }
 }

@@ -7,19 +7,24 @@ plugins {
 
 android {
     namespace = "com.focustask"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.focustask"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.5.0"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // the build to use on a phone: shrunk and optimised by R8, which makes the app noticeably smoother
+            // than the debug build. Signed with the debug key so it installs over the debug build.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -38,6 +43,8 @@ android {
     }
     lint {
         abortOnError = false
+        // lint is not needed to build the release APK (and needs a download the first time)
+        checkReleaseBuilds = false
     }
     testOptions {
         unitTests {
@@ -64,16 +71,14 @@ dependencies {
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
-    testImplementation("androidx.work:work-testing:2.9.1")
     testImplementation("androidx.glance:glance-appwidget-testing:1.1.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.32.0")

@@ -2,4 +2,13 @@
     <string name="app_name">FocusTask</string>
     <string name="widget_small_desc">One task, one timer, one tap to finish it.</string>
     <string name="widget_large_desc">The task carousel with the focus timer.</string>
+    <!-- sample content of the widget previews -->
+    <string name="wp_due">Due today, 17:00</string>
+    <string name="wp_block">Deep work · 52 min left</string>
+    <string name="wp_position">Task 2 of 5 in Thesis</string>
+    <string name="wp_task">Write the methods section</string>
+    <string name="wp_previous">✓  Outline chapter 3</string>
+    <string name="wp_next">○  Check the references</string>
+    <string name="wp_timer">Focus 18 min</string>
+    <string name="wp_done">Done</string>
 </resources>

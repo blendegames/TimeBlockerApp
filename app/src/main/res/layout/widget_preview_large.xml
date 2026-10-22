@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the large widget looks like in the widget picker: the carousel and the timer, with sample tasks. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/wp_background"
+    android:orientation="vertical"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="14dp">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="1"
+            android:text="@string/wp_position"
+            android:textColor="@color/wp_muted"
+            android:textSize="12sp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:text="@string/wp_block"
+            android:textColor="@color/wp_accent"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="vertical">
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:maxLines="1"
+            android:text="@string/wp_previous"
+            android:textColor="@color/wp_muted"
+            android:textSize="14sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/wp_card"
+            android:orientation="vertical"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="10dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/wp_due"
+                android:textColor="@color/wp_muted"
+                android:textSize="12sp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="2"
+                android:text="@string/wp_task"
+                android:textColor="@color/wp_ink"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:maxLines="1"
+            android:text="@string/wp_next"
+            android:textColor="@color/wp_muted"
+            android:textSize="14sp" />
+    </LinearLayout>
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center"
+        android:text="● • • ● • • ☀ · · ○ · · ○"
+        android:textColor="@color/wp_accent"
+        android:textSize="16sp" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="1"
+            android:text="@string/wp_timer"
+            android:textColor="@color/wp_ink"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:background="@drawable/wp_button"
+            android:gravity="center"
+            android:paddingHorizontal="20dp"
+            android:text="@string/wp_done"
+            android:textColor="@color/wp_on_accent"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>

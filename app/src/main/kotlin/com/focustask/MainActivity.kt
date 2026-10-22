@@ -13,6 +13,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focustask.ui.AppRoot
 import com.focustask.ui.theme.FocusTheme
 import kotlinx.coroutines.launch
@@ -35,6 +37,15 @@ class MainActivity : ComponentActivity() {
             // Permission or ringer changes happen outside the app: re-plan when we come back.
             repeatOnLifecycle(Lifecycle.State.RESUMED) { vm.refreshAlerts() }
         }
-        setContent { FocusTheme { AppRoot(vm) } }
+        setContent {
+            val ui by vm.ui.collectAsStateWithLifecycle()
+            FocusTheme(wallpaper = ui?.data?.settings?.wallpaperColors == true) { AppRoot(vm) }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // the copy is written a moment after each change: make sure the last change is in it before the app goes away
+        (application as FocusApp).let { app -> app.scope.launch { runCatching { app.mirror.saveNow() } } }
     }
 }
